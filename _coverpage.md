@@ -6,5 +6,5 @@
 
 - Version0.0：初始创建
 
-[GitHub](https://github.com/wushuangabao)
 [Go to Guide](/doc/guide)
+[About Me](/about/me)
