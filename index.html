@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta charset="UTF-8">
   <link rel="stylesheet" href="https://unpkg.com/docsify-themeable@0.8.6/dist/css/theme-simple-dark.css">
+  <!-- Gitalk评论系统 -->
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/gitalk/dist/gitalk.css">
 </head>
 <body>
   <!-- 导航栏 -->
@@ -22,5 +24,24 @@
     }
   </script>
   <script src="//cdn.jsdelivr.net/npm/docsify/lib/docsify.min.js"></script>
+  <!-- 插件： -->
+  <!-- 在所有的代码块上添加一个简单的Click to copy按钮来允许用户从你的文档中轻易地复制代码 -->
+  <script src="//cdn.jsdelivr.net/npm/docsify-copy-code/dist/docsify-copy-code.min.js"></script>
+  <!-- Gitalk评论系统 -->
+  <script src="//cdn.jsdelivr.net/npm/docsify/lib/plugins/gitalk.min.js"></script>
+  <script src="//cdn.jsdelivr.net/npm/gitalk/dist/gitalk.min.js"></script>
+  <script>
+    const gitalk = new Gitalk({
+      clientID: 'cd889d67c5a028cf1044',
+      clientSecret: '468f44da68aa60c29ca2410a4093aa9ef4aa4687',
+      repo: 'https://github.com/wushuangabao/Fool9-RPG-Maker-Classroom',
+      owner: 'wushuangabao',
+      admin: ['wushuangabao'],
+      // facebook-like distraction free mode
+      distractionFreeMode: false
+    })
+  </script>
+
+  
 </body>
 </html>
