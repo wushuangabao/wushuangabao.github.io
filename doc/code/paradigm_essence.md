@@ -5,7 +5,7 @@ tags:
   - 编程范式
 categories:
   - 编程艺术
-toc: false
+
 date: 2019-08-20 21:47:02
 ```
 

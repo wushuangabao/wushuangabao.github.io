@@ -5,7 +5,7 @@ tags:
   - 设计模式
 categories:
   - 编程艺术
-toc: false
+
 date: 2019-12-17 13:35:09
 ```
 
