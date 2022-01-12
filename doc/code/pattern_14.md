@@ -1,9 +1,11 @@
 # 【设计模式】职责链模式
 
 ```
-tags: []
-originContent: ''
-categories: []
+tags:
+  - 学习
+  - 设计模式
+categories:
+  - 编程艺术
 
 date: 2020-07-02 16:42:48
 ```
