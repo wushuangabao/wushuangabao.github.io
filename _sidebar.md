@@ -6,6 +6,7 @@
 - 所思所想
 	- [有关时间管理技巧的一些总结](doc/think/manage_time.md)
 	- [我的哲学沉思集](doc/think/philosophy.md)
+	- [我的三观](doc/think/three_outlooks.md)
 - Qt
 	- [QRegExp Class 文档翻译](doc/code/QRegExp.md)
 - 设计模式
