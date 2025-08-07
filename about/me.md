@@ -32,7 +32,7 @@
 > 1. lv2：聪明，学习、理解能力强
 > 1. lv3：迷人，有气质
 
-**单身营业中**，想了解更多信息可以看我的[答“相识十五问”](https://mp.weixin.qq.com/s/cZBGhcUGjWsWnemnFiZL9A)。
+2025年5月20日状态从单身变成了**已婚**。想了解更多信息可以看我的[答“相识十五问”](https://mp.weixin.qq.com/s/cZBGhcUGjWsWnemnFiZL9A)。
 
 ## 过往经历
 
