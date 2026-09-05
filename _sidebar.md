@@ -1,5 +1,6 @@
 **[网站导航](doc/guide)**
 - [作品展示](doc/showcase.md)
+- [游戏设计模式图书馆](/game-pattern-library/ ':ignore')
 
 - 读书文摘
 	- [爱是一门需要学习的艺术](doc/read/love.md)

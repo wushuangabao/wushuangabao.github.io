@@ -8,3 +8,4 @@
 
 [Go to Guide](/doc/guide)
 [About Me](/about/me)
+[游戏设计模式图书馆](/game-pattern-library/ ':ignore')
