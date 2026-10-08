@@ -22,6 +22,12 @@
       <section class="board-panel" aria-label="六边形棋盘">
         <div class="board-topline"><span><i class="status-dot"></i><span id="board-status">准备对局</span></span><span id="move-number">第 0 手</span></div>
         <div id="board-viewport" class="board-viewport"><svg id="board" role="group" aria-label="六元围棋棋盘，方向键选择交点，回车落子"></svg></div>
+        <div id="ownership-legend" class="ownership-legend" aria-label="形势标记图例" hidden>
+          <span><i class="area-key solid" aria-hidden="true"></i>实心：已围空地</span>
+          <span><i class="area-key outline" aria-hidden="true"></i>空心：潜力空地</span>
+          <span><i class="area-key contested" aria-hidden="true"></i>灰点：双方争夺</span>
+          <span>蓝 / 红表示归属倾向，未标处尚不明朗</span>
+        </div>
       </section>
       <aside class="sidebar" aria-label="对局控制">
         <div class="intro"><span class="eyebrow">一局之间 · 方寸之外</span><h1>六边生万象。</h1><p>三路相连，红蓝相争。<br>留一口气，围一片天地。</p></div>
@@ -38,12 +44,29 @@
           <p>点选棋子可标记整块死子，再点取消。未标记的棋子也请双方核对。</p>
           <p id="dead-count"></p>
           <div class="score-preview" aria-label="移除标记死子后的预计得分"><div><span>蓝方预计</span><strong id="preview-blue">0</strong></div><div><span>红方预计</span><strong id="preview-red">0</strong></div></div>
+          <div id="position-details" hidden>
+            <p id="position-lead" class="position-lead"></p>
+            <table class="position-table" aria-label="双方形势分数构成">
+              <thead><tr><th scope="col">分数构成</th><th scope="col">蓝方</th><th scope="col">红方</th></tr></thead>
+              <tbody>
+                <tr><th scope="row">活子</th><td id="position-blue-stones"></td><td id="position-red-stones"></td></tr>
+                <tr><th scope="row">已围空地</th><td id="position-blue-territory"></td><td id="position-red-territory"></td></tr>
+                <tr><th scope="row">潜力空地</th><td id="position-blue-potential"></td><td id="position-red-potential"></td></tr>
+                <tr class="dead-row"><th scope="row">死子 · 不计分</th><td id="position-blue-dead"></td><td id="position-red-dead"></td></tr>
+              </tbody>
+            </table>
+            <details class="position-explanation"><summary>估算说明</summary>
+              <p id="life-detail" class="scoring-note"></p>
+              <p>参考总分 = 活子 + 已围空地 + 潜力空地。蓝红空心方块越清晰，当前归属倾向越强。大空区仍可被侵入，保留为潜力或不明朗；双方都能影响的点标为争夺。攻杀、先后手和劫争可能改变结果，预估不作终局计分。</p>
+            </details>
+          </div>
           <p id="preview-neutral"></p>
-          <div class="score-confirm-actions"><button id="confirm-blue" aria-pressed="false">蓝方确认</button><button id="confirm-red" aria-pressed="false">红方确认</button></div>
-          <p class="scoring-note">双方确认后结算；修改标记需重新确认。</p>
+          <div id="score-confirm-actions" class="score-confirm-actions"><button id="confirm-blue" aria-pressed="false">蓝方确认</button><button id="confirm-red" aria-pressed="false">红方确认</button></div>
+          <p id="scoring-note" class="scoring-note">双方确认后结算；修改标记需重新确认。</p>
           <button id="resume-play">有争议，继续对弈</button>
+          <button id="end-assessment" class="primary" hidden>关闭形势判断</button>
         </section>
-        <div class="game-actions"><button id="pause" class="pause" aria-pressed="false" disabled>暂停计时</button><button id="pass" disabled>停一手 <span aria-hidden="true">→</span></button><button id="undo" disabled>悔棋 <span aria-hidden="true">↶</span></button><button id="resign" class="resign" disabled>认输</button></div>
+        <div class="game-actions"><button id="assessment" class="assessment" disabled>形势判断</button><button id="pause" class="pause" aria-pressed="false" disabled>暂停计时</button><button id="pass" disabled>停一手 <span aria-hidden="true">→</span></button><button id="undo" disabled>悔棋 <span aria-hidden="true">↶</span></button><button id="resign" class="resign" disabled>认输</button></div>
         <button id="new-game" class="primary">开始新棋局</button>
         <p class="side-note">双方连续停一手后，确认死子并计分。</p>
       </aside>

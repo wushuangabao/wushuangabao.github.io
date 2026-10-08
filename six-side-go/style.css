@@ -248,6 +248,19 @@ a {
 .point.dead .piece { opacity:.28; filter:none; }
 .point.dead .dead-mark { display:block; }
 .point.dead .last-mark { display:none; }
+.ownership-mark { display:none; pointer-events:none; }
+.area-blue { --area-color:var(--blue); }
+.area-red { --area-color:var(--red); }
+.point.area-territory .ownership-mark { display:block; fill:var(--area-color); }
+.point.area-potential .ownership-mark { display:block; fill:var(--paper,#f5f3ec); stroke:var(--area-color); stroke-width:1.8; opacity:var(--area-opacity); }
+.point.area-contested .ownership-mark { display:block; x:-2.5px; y:-2.5px; width:5px; height:5px; rx:2.5px; fill:#7c8074; }
+.point.area-territory .piece, .point.area-potential .piece, .point.area-contested .piece { opacity:0; }
+.ownership-legend { display:flex; flex-wrap:wrap; justify-content:center; gap:10px 20px; margin:14px auto 0; max-width:650px; font-size:16px; line-height:1.6; color:var(--muted); }
+.ownership-legend>span { display:flex; align-items:center; gap:8px; }
+.area-key { display:inline-block; width:12px; height:12px; flex-shrink:0; border-radius:2px; }
+.area-key.solid { background:linear-gradient(90deg,var(--blue) 50%,var(--red) 50%); }
+.area-key.outline { border:2px solid var(--blue); border-right-color:var(--red); border-bottom-color:var(--red); }
+.area-key.contested { width:7px; height:7px; border-radius:50%; background:#7c8074; margin:0 3px; }
 #board[data-scoring="true"] .point:not(.empty) .hit { cursor:pointer; }
 
 .scoring .intro { display:none; }
@@ -259,13 +272,29 @@ a {
 .score-preview div { display:flex; flex-direction:column; gap:5px; }
 .score-preview span { font-size:16px; }
 .score-preview strong { font-size:25px; font-weight:500; }
+.position-table { width:100%; border-collapse:collapse; font-size:16px; line-height:1.6; font-variant-numeric:tabular-nums; }
+.position-table th, .position-table td { padding:8px 0; border-bottom:1px solid #d5d9c9; text-align:right; font-weight:400; }
+.position-table th:first-child { text-align:left; }
+.position-table thead th { font-weight:600; }
+.position-table td:nth-child(2), .position-table thead th:nth-child(2) { color:var(--blue); }
+.position-table td:nth-child(3), .position-table thead th:nth-child(3) { color:var(--red); }
+.position-table .dead-row th { color:var(--muted); }
+.scoring-panel .position-lead { border-bottom:1px solid #c9cfbc; padding:0 0 14px; margin:8px 0; font-size:18px; }
+.position-explanation { margin-top:14px; font-size:16px; line-height:1.7; }
+.position-explanation summary { cursor:pointer; padding:8px 0; }
+.position-explanation summary:focus-visible { outline:2px solid var(--gold); outline-offset:2px; }
+.assessing .intro { display:none; }
+@media(min-width:721px) {
+  .assessing .game-layout { align-items:start; }
+  .assessing .board-panel { position:sticky; top:20px; }
+}
 #preview-blue { color:var(--blue); }
 #preview-red { color:var(--red); }
 .score-confirm-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 .score-confirm-actions button { padding:10px 5px; font-size:18px; min-height:52px; background:#fafaf3; }
 .score-confirm-actions button[aria-pressed="true"] { background:var(--green); color:white; opacity:1; border-color:var(--green); }
 .scoring-note, #preview-neutral { color:var(--muted); }
-#resume-play { width:100%; font-size:18px; margin-top:4px; }
+#resume-play, #end-assessment { width:100%; font-size:18px; margin-top:4px; }
 
 .point:focus {
   outline:none;
@@ -491,7 +520,7 @@ body[data-turn="red"] #timer-fill {
   padding:4px;
 }
 
-.game-actions .pause {
+.game-actions .pause, .game-actions .assessment {
   grid-column:1 / -1;
   justify-content:center;
 }

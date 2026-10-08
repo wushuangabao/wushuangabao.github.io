@@ -87,7 +87,9 @@
   }
 
   // 保守的活棋证明：反复剔除不足两个独立眼区的棋块及依赖它们的眼区。
-  // 眼区的每个空点都必须是该棋块的气；不能只按空地数量或当前气数判断死活。
+  // 眼区是由己方棋块围住的“空点 + 对方棋子”连通区域，不能遇到眼内敌子就丢弃。
+  // 禁止自杀时，区域的每个空点都必须是该棋块的气；已有敌子不能把一个眼拆成多个。
+  // Benson 活棋筛选亦采用此定义：https://github.com/lightvector/KataGo/blob/master/cpp/game/board.cpp
   function unconditionalLife(board, color) {
     const blocks = [], blockAt = new Map(), seen = new Set(), regions = [];
     for (const p of BOARD.points) if (board[p.id] === color && !blockAt.has(p.id)) {
@@ -95,21 +97,20 @@
       for (const id of block.stones) blockAt.set(id, blocks.length);
       blocks.push(block);
     }
-    for (const p of BOARD.points) if (!board[p.id] && !seen.has(p.id)) {
-      const points = [], boundary = new Set(), stack = [p.id];
-      let enclosed = true;
+    for (const p of BOARD.points) if (board[p.id] !== color && !seen.has(p.id)) {
+      const emptyPoints = [], boundary = new Set(), stack = [p.id];
       while (stack.length) {
         const id = stack.pop();
         if (seen.has(id)) continue;
-        seen.add(id); points.push(id);
+        seen.add(id);
+        if (!board[id]) emptyPoints.push(id);
         for (const n of BOARD.byId.get(id).neighbors) {
-          if (!board[n]) { if (!seen.has(n)) stack.push(n); }
-          else if (board[n] === color) boundary.add(blockAt.get(n));
-          else enclosed = false;
+          if (board[n] !== color) { if (!seen.has(n)) stack.push(n); }
+          else boundary.add(blockAt.get(n));
         }
       }
-      if (enclosed && boundary.size) regions.push({ boundary,
-        vital: new Set([...boundary].filter(b => points.every(id => blocks[b].liberties.has(id)))) });
+      if (emptyPoints.length && boundary.size) regions.push({ boundary,
+        vital: new Set([...boundary].filter(b => emptyPoints.every(id => blocks[b].liberties.has(id)))) });
     }
     const alive = new Set(blocks.map((_, i) => i));
     let changed = true;
@@ -200,6 +201,93 @@
     return { dead, alive, examinedNodes };
   }
 
+  // 中盘势力估算，与终局 score() 分离。使用棋盘的真实三邻点连接，不能套方格距离。
+  // 参考 GNU Go 的衰减势力思路，独立实现带固定棋子边界的扩散；数值不是胜率或概率。
+  // https://www.gnu.org/software/gnugo/gnugo_13.html
+  function estimatePosition(board, deadStones = new Set()) {
+    const position = board.slice(), ownership = new Map();
+    const sides = { [BLUE]: { stones: 0, dead: 0, alive: 0, territory: 0, potential: 0 },
+      [RED]: { stones: 0, dead: 0, alive: 0, territory: 0, potential: 0 } };
+    for (const p of BOARD.points) if (board[p.id] && deadStones.has(p.id)) {
+      sides[board[p.id]].dead++; position[p.id] = EMPTY;
+    }
+    const alive = { [BLUE]: unconditionalLife(position, BLUE), [RED]: unconditionalLife(position, RED) };
+    const strength = new Float64Array(486), seen = new Set();
+    for (const p of BOARD.points) if (position[p.id] && !seen.has(p.id)) {
+      const group = groupAt(position, p.id), color = position[p.id];
+      // 未证明死的棋块仍保留，气紧的棋块降低势力；两眼活棋保持完整势力。
+      const value = alive[color].has(p.id) ? 1 : group.liberties.size <= 1 ? 0.35 : group.liberties.size === 2 ? 0.6 : 0.85;
+      for (const id of group.stones) { seen.add(id); strength[id] = value; }
+      sides[color].stones += group.stones.size;
+    }
+    for (const color of [BLUE, RED]) sides[color].alive = alive[color].size;
+
+    // 己方棋子提供势力，对方棋子是不可穿过的边界；每走一条实际连接都会衰减。
+    const influence = {};
+    for (const color of [BLUE, RED]) {
+      let current = new Float64Array(486), next = new Float64Array(486);
+      for (const p of BOARD.points) if (position[p.id] === color) current[p.id] = next[p.id] = strength[p.id];
+      for (let step = 0; step < 96; step++) {
+        let delta = 0;
+        for (const p of BOARD.points) if (!position[p.id]) {
+          next[p.id] = 0.92 * p.neighbors.reduce((sum, id) => sum + current[id], 0) / p.neighbors.length;
+          delta = Math.max(delta, Math.abs(next[p.id] - current[p.id]));
+        }
+        [current, next] = [next, current];
+        if (delta < 0.000001) break;
+      }
+      influence[color] = current;
+    }
+
+    // 单色边界的紧凑空区才作为当前围空。大空区仍可被侵入，归入势力估算；
+    // 尤其不能像终局数子那样，让开局的一颗棋子直接拥有其余 359 个点。
+    const visited = new Set();
+    for (const p of BOARD.points) if (!position[p.id] && !visited.has(p.id)) {
+      const region = [], colors = new Set(), boundary = new Set(), queue = [p.id];
+      visited.add(p.id);
+      for (let i = 0; i < queue.length; i++) {
+        const id = queue[i]; region.push(id);
+        for (const n of BOARD.byId.get(id).neighbors) {
+          if (position[n]) { colors.add(position[n]); boundary.add(n); }
+          else if (!visited.has(n)) { visited.add(n); queue.push(n); }
+        }
+      }
+      if (colors.size !== 1 || region.length > boundary.size * 2) continue;
+      const distance = new Map([...boundary].map(id => [id, 0])), flood = [...boundary];
+      for (let i = 0; i < flood.length; i++) {
+        const id = flood[i];
+        for (const n of BOARD.byId.get(id).neighbors) if (!position[n] && !distance.has(n)) {
+          distance.set(n, distance.get(id) + 1); flood.push(n);
+        }
+      }
+      if (region.some(id => distance.get(id) > 3)) continue;
+      const owner = [...colors][0];
+      for (const id of region) ownership.set(id, { owner, kind: 'territory', confidence: 1 });
+      sides[owner].territory += region.length;
+    }
+
+    let contested = 0, open = 0;
+    for (const p of BOARD.points) {
+      if (position[p.id]) { ownership.set(p.id, { owner: position[p.id], kind: 'stone', confidence: 1 }); continue; }
+      if (ownership.has(p.id)) continue;
+      const blue = influence[BLUE][p.id], red = influence[RED][p.id], sum = blue + red;
+      const bias = sum ? (blue - red) / sum : 0;
+      const confidence = Math.abs(bias) * Math.min(1, sum / 0.45);
+      const adjacent = new Set(p.neighbors.map(id => position[id]).filter(Boolean));
+      if (Math.max(blue, red) < 0.08) {
+        ownership.set(p.id, { owner: EMPTY, kind: 'open', confidence: 0 }); open++;
+      } else if (Math.abs(bias) < 0.28 || adjacent.size === 2) {
+        // 共享气、双方势力接近的空点保持争夺状态，避免把双活的公气判给一方。
+        ownership.set(p.id, { owner: EMPTY, kind: 'contested', confidence: 0 }); contested++;
+      } else {
+        const owner = bias > 0 ? BLUE : RED;
+        ownership.set(p.id, { owner, kind: 'potential', confidence }); sides[owner].potential++;
+      }
+    }
+    for (const color of [BLUE, RED]) sides[color].total = sides[color].stones + sides[color].territory + sides[color].potential;
+    return { sides, ownership, contested, open, neutral: contested + open };
+  }
+
   class Game {
     constructor(seconds = 60, now = Date.now()) {
       if (!Number.isSafeInteger(seconds) || seconds < 1 || seconds > 180 * 60) {
@@ -216,6 +304,7 @@
       this.lastMove = null;
       this.result = null;
       this.scoring = false;
+      this.assessing = false;
       this.deadStones = new Set();
       this.autoDeadCount = 0;
       this.scoreConfirmed = { [BLUE]: false, [RED]: false };
@@ -223,6 +312,27 @@
       this.deadline = now + seconds * 1000;
     }
     get paused() { return this.pausedRemainingMs !== null; }
+    get postgameReview() { return Boolean(this.result && ['resign', 'timeout'].includes(this.result.reason)); }
+    get reviewing() { return this.scoring || this.assessing || this.postgameReview; }
+    prepareDeadReview() {
+      this.deadStones = analyzeDead(this.board).dead;
+      this.autoDeadCount = this.deadStones.size;
+      this.scoreConfirmed = { [BLUE]: false, [RED]: false };
+    }
+    beginAssessment(now = Date.now()) {
+      if (this.tick(now) || this.reviewing) return false;
+      this.assessing = true;
+      this.prepareDeadReview();
+      return true;
+    }
+    endAssessment(now = Date.now()) {
+      if (this.tick(now) || !this.assessing) return false;
+      this.assessing = false;
+      this.deadStones.clear();
+      this.autoDeadCount = 0;
+      this.scoreConfirmed = { [BLUE]: false, [RED]: false };
+      return true;
+    }
     remainingMilliseconds(now = Date.now()) { return this.scoring ? 0 : Math.max(0, this.pausedRemainingMs ?? (this.deadline - now)); }
     remaining(now = Date.now()) { return Math.ceil(this.remainingMilliseconds(now) / 1000); }
     remainingRatio(now = Date.now()) {
@@ -233,12 +343,12 @@
       return this.result;
     }
     pause(now = Date.now()) {
-      if (this.tick(now) || this.scoring || this.paused) return false;
+      if (this.tick(now) || this.reviewing || this.paused) return false;
       this.pausedRemainingMs = this.remainingMilliseconds(now);
       return true;
     }
     resume(now = Date.now()) {
-      if (this.result || !this.paused) return false;
+      if (this.result || this.assessing || !this.paused) return false;
       this.deadline = now + this.pausedRemainingMs;
       this.pausedRemainingMs = null;
       return true;
@@ -251,6 +361,7 @@
     nextTurn(now) { this.turn = other(this.turn); this.deadline = now + this.seconds * 1000; }
     play(id, now = Date.now()) {
       if (this.tick(now)) return { ok: false, reason: '棋局已结束' };
+      if (this.assessing) return { ok: false, reason: '请先关闭形势判断' };
       if (this.scoring) return { ok: false, reason: '请先确认死子，或选择继续对弈' };
       if (this.paused) return { ok: false, reason: '计时已暂停，请先继续计时' };
       if (!BOARD.byId.has(id)) return { ok: false, reason: '请在棋盘交点落子' };
@@ -287,20 +398,19 @@
       return { ok: true, captured: removed.length };
     }
     pass(now = Date.now()) {
-      if (this.tick(now) || this.scoring || this.paused) return false;
+      if (this.tick(now) || this.reviewing || this.paused) return false;
       this.history.push(this.snapshot(now));
       this.passes++; this.moveNumber++; this.ko = null;
       this.nextTurn(now);
       if (this.passes === 2) {
         this.scoring = true;
-        this.deadStones = analyzeDead(this.board).dead;
-        this.autoDeadCount = this.deadStones.size;
-        this.scoreConfirmed = { [BLUE]: false, [RED]: false };
+        this.prepareDeadReview();
       }
       return true;
     }
-    toggleDead(id) {
-      if (!this.scoring || this.result) return { ok: false, reason: '当前不在死子确认阶段' };
+    toggleDead(id, now = Date.now()) {
+      if (this.assessing && this.tick(now)) return { ok: false, reason: '棋局已结束' };
+      if (!this.reviewing) return { ok: false, reason: '当前不在死子确认或形势判断阶段' };
       if (!BOARD.byId.has(id) || !this.board[id]) return { ok: false, reason: '请点选棋子标记死子，再点一次可取消' };
       const stones = groupAt(this.board, id).stones, marked = !this.deadStones.has(id);
       for (const stone of stones) {
@@ -317,6 +427,7 @@
       return board;
     }
     previewScore() { return score(this.scoringBoard()); }
+    estimatePosition() { return estimatePosition(this.board, this.deadStones); }
     confirmScore(color) {
       if (!this.scoring || this.result || ![BLUE, RED].includes(color) || this.scoreConfirmed[color]) return false;
       this.scoreConfirmed[color] = true;
@@ -341,7 +452,7 @@
       return true;
     }
     undo(now = Date.now()) {
-      if (this.tick(now) || this.scoring || this.paused || !this.history.length) return false;
+      if (this.tick(now) || this.reviewing || this.paused || !this.history.length) return false;
       const state = this.history.pop();
       const { remainingMs, ...rest } = state;
       Object.assign(this, rest);
@@ -349,17 +460,19 @@
       return true;
     }
     resign(now = Date.now()) {
-      if (this.tick(now) || this.scoring || this.paused) return false;
+      if (this.tick(now) || this.reviewing || this.paused) return false;
       this.finish(other(this.turn), 'resign');
       return true;
     }
     finish(winner, reason, totals = null) {
       this.scoring = false;
+      this.assessing = false;
       this.deadStones.clear();
       this.result = { winner, reason, totals };
+      if (this.postgameReview) this.prepareDeadReview();
     }
   }
-  const api = { BOARD, Game, groupAt, score, analyzeDead, EMPTY, BLUE, RED, other };
+  const api = { BOARD, Game, groupAt, score, analyzeDead, estimatePosition, EMPTY, BLUE, RED, other };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SixSideGo = api;
 })(globalThis);

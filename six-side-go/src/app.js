@@ -52,6 +52,7 @@
     const node = element('g', { class: 'point empty', transform: `translate(${p.x} ${p.y})`, role: 'button',
       tabindex: p.id === selected ? 0 : -1, 'data-id': p.id });
     element('circle', { r: 11.8, class: 'hit' }, node);
+    element('rect', { x: -4.5, y: -4.5, width: 9, height: 9, rx: 1.2, class: 'ownership-mark', 'aria-hidden': 'true' }, node);
     element('circle', { r: 1.7, class: 'piece' }, node);
     element('circle', { r: 2.4, class: 'last-mark' }, node);
     element('rect', { x: -4, y: -4, width: 8, height: 8, class: 'ko-mark' }, node);
@@ -76,7 +77,7 @@
   }
   function boardTap(event) {
     if (!game) { $('setup-dialog').showModal(); return; }
-    if (game.tick() || game.paused) { render(); return; }
+    if ((game.tick() && !game.postgameReview) || (game.paused && !game.reviewing)) { render(); return; }
     const point = boardCoordinates(event);
     if (!camera.zoomed) {
       const pixelsPerUnit = svg.getScreenCTM().a;
@@ -157,11 +158,12 @@
   function message(text) { $('message').textContent = text; }
   function play(id) {
     if (!game) { $('setup-dialog').showModal(); return; }
-    if (game.scoring) {
+    if (game.tick() && !game.postgameReview) { render(); return; }
+    if (game.reviewing) {
       const result = game.toggleDead(id);
       resetCamera(); render();
       if (result.ok) sound('button');
-      message(result.ok ? `${result.marked ? '已标记' : '已取消'} ${result.count} 枚死子。请双方重新核对并确认。` : result.reason);
+      if (!game.assessing && !game.result) message(result.ok ? `${result.marked ? '已标记' : '已取消'} ${result.count} 枚死子。请双方重新核对并确认。` : result.reason);
       return;
     }
     const result = game.play(id);
@@ -171,25 +173,33 @@
     render();
   }
   function render() {
-    const scoring = Boolean(game?.scoring);
+    const assessing = Boolean(game?.assessing);
+    const postgame = Boolean(game?.postgameReview);
+    const scoring = Boolean(game?.reviewing);
+    const position = assessing ? game.estimatePosition() : null;
     const active = game && !game.result && !game.paused && !scoring;
     if (!active && !scoring) resetCamera();
-    document.body.classList.toggle('scoring', scoring);
+    document.body.classList.toggle('scoring', Boolean(game?.scoring));
+    document.body.classList.toggle('assessing', assessing);
     turnPanel.classList.toggle('finished', Boolean(game?.result));
     turnPanel.setAttribute('aria-label', game?.result ? '对局结果' : '当前回合');
     document.body.dataset.turn = game?.turn === RED ? 'red' : 'blue';
     svg.dataset.active = String(Boolean(active));
     svg.dataset.scoring = String(scoring);
-    svg.setAttribute('aria-label', scoring ? '确认死子棋盘，方向键选择棋子，回车标记或取消整块死子' : '六元围棋棋盘，方向键选择交点，回车落子');
+    svg.setAttribute('aria-label', scoring ? '死子标记棋盘，方向键选择棋子，回车标记或取消整块死子' : '六元围棋棋盘，方向键选择交点，回车落子');
     svg.style.setProperty('--preview', game?.turn === RED ? 'var(--red)' : 'var(--blue)');
     let blue = 0, red = 0;
     for (const p of BOARD.points) {
       const color = game?.board[p.id] || 0, node = nodes.get(p.id);
       if (color === BLUE) blue++; else if (color === RED) red++;
       const dead = scoring && game.deadStones.has(p.id);
-      node.setAttribute('class', `point ${color === BLUE ? 'blue' : color === RED ? 'red' : 'empty'}${game?.lastMove === p.id ? ' last' : ''}${game?.ko === p.id ? ' ko' : ''}${dead ? ' dead' : ''}`);
+      const area = position?.ownership.get(p.id);
+      const showArea = !color && area && ['territory', 'potential', 'contested'].includes(area.kind);
+      node.setAttribute('class', `point ${color === BLUE ? 'blue' : color === RED ? 'red' : 'empty'}${game?.lastMove === p.id ? ' last' : ''}${game?.ko === p.id ? ' ko' : ''}${dead ? ' dead' : ''}${showArea ? ` area-${area.kind} area-${area.owner === BLUE ? 'blue' : area.owner === RED ? 'red' : 'neutral'}` : ''}`);
+      node.style.setProperty('--area-opacity', area?.kind === 'potential' ? String(0.45 + area.confidence * 0.5) : '1');
       node.querySelector('.piece').setAttribute('r', color ? 8.8 : 1.7);
-      node.setAttribute('aria-label', `第${18 - p.row}行第${p.col + 1}列，${color ? name(color) + '棋子' : '空点'}${game?.ko === p.id ? '，劫点' : ''}${dead ? '，已标记死子' : ''}`);
+      const areaLabel = !showArea ? '' : area.kind === 'contested' ? '，双方争夺' : `，${name(area.owner)}${area.kind === 'territory' ? '已围空地' : '潜力空地'}`;
+      node.setAttribute('aria-label', `第${18 - p.row}行第${p.col + 1}列，${color ? name(color) + '棋子' : '空点'}${game?.ko === p.id ? '，劫点' : ''}${dead ? '，已标记死子' : ''}${areaLabel}`);
       node.setAttribute('aria-disabled', String(scoring ? !color : !active || Boolean(color)));
       if (scoring && color) node.setAttribute('aria-pressed', String(dead));
       else node.removeAttribute('aria-pressed');
@@ -205,21 +215,41 @@
     $('pause').textContent = game?.paused ? '继续计时' : '暂停计时';
     $('pause').setAttribute('aria-pressed', String(Boolean(game?.paused)));
     $('move-number').textContent = `第 ${game?.moveNumber || 0} 手`;
-    $('board-status').textContent = game?.result ? '本局已结束' : scoring ? '确认死子' : game?.paused ? '已暂停' : active ? '对弈中' : '准备对局';
+    $('board-status').textContent = game?.result ? '本局已结束' : assessing ? '形势判断' : scoring ? '确认死子' : game?.paused ? '已暂停' : active ? '对弈中' : '准备对局';
     const duration = game?.seconds || 60;
-    $('mode-label').textContent = scoring ? '计时已停止' : duration > 60 ? `每手 ${duration / 60} 分钟` : `每手 ${duration} 秒`;
+    $('mode-label').textContent = game?.scoring ? '计时已停止' : duration > 60 ? `每手 ${duration / 60} 分钟` : `每手 ${duration} 秒`;
     $('new-game').textContent = game ? '再开一局' : '开始新棋局';
-    $('turn-label').innerHTML = game?.result ? (game.result.winner ? `${name(game.result.winner)}获胜` : '双方和棋') : scoring ? '等待双方确认' : game ? `<i class="stone-dot ${game.turn === BLUE ? 'blue' : 'red'}"></i>${name(game.turn)}${game.paused ? ' · 已暂停' : '执子'}` : '<i class="stone-dot blue"></i>等待开局';
+    $('turn-label').innerHTML = game?.result ? (game.result.winner ? `${name(game.result.winner)}获胜` : '双方和棋') : game?.scoring ? '等待双方确认' : game ? `<i class="stone-dot ${game.turn === BLUE ? 'blue' : 'red'}"></i>${name(game.turn)}${game.paused ? ' · 已暂停' : '执子'}` : '<i class="stone-dot blue"></i>等待开局';
     $('scoring-panel').hidden = !scoring;
+    $('ownership-legend').hidden = !assessing;
+    $('position-details').hidden = !assessing;
+    $('dead-count').hidden = assessing;
+    $('assessment').disabled = !game || Boolean(game.result) || scoring;
+    $('assessment').hidden = Boolean(game?.result);
+    $('scoring-title').textContent = postgame ? '终局复盘' : assessing ? '形势判断' : '确认死子';
+    $('score-confirm-actions').hidden = assessing || postgame;
+    $('scoring-note').textContent = postgame ? '可调整死子标记查看分数，棋盘保留至新开一局。复盘分数不改变认输或超时的胜负结果。' : assessing ? '潜力空地并非确定得分，仅供参考。关闭后清除标记，继续对局。' : '双方确认后结算；修改标记需重新确认。';
+    $('resume-play').hidden = assessing || postgame;
+    $('end-assessment').hidden = !assessing;
     document.querySelector('.game-actions').hidden = scoring;
     if (scoring) {
-      const totals = game.previewScore();
+      const totals = assessing ? { blue: position.sides[BLUE].total, red: position.sides[RED].total } : game.previewScore();
       const deadBlue = [...game.deadStones].filter(id => game.board[id] === BLUE).length;
       $('auto-dead-note').textContent = game.autoDeadCount ? `程序已预标 ${game.autoDeadCount} 枚死子，请核对。` : '程序未预标死子，请双方核对。';
       $('dead-count').textContent = `当前标记：蓝 ${deadBlue} 子 · 红 ${game.deadStones.size - deadBlue} 子`;
-      $('preview-blue').textContent = `${totals.blue} 分`;
-      $('preview-red').textContent = `${totals.red} 分`;
-      $('preview-neutral').textContent = `中立 ${totals.neutral} 点 · 无贴目`;
+      $('preview-blue').textContent = `${assessing ? '≈ ' : ''}${totals.blue} 分`;
+      $('preview-red').textContent = `${assessing ? '≈ ' : ''}${totals.red} 分`;
+      $('preview-neutral').textContent = assessing ? `双方争夺 ${position.contested} 点 · 尚不明朗 ${position.open} 点 · 无贴目` : `中立 ${totals.neutral} 点 · 无贴目`;
+      if (assessing) {
+        const difference = totals.blue - totals.red;
+        $('position-lead').textContent = difference === 0 ? '当前势力估算相当' : `${name(difference > 0 ? BLUE : RED)}暂领先约 ${Math.abs(difference)} 分`;
+        for (const [color, key] of [[BLUE, 'blue'], [RED, 'red']]) {
+          for (const field of ['stones', 'territory', 'potential', 'dead']) {
+            $(`position-${key}-${field}`).textContent = position.sides[color][field];
+          }
+        }
+        $('life-detail').textContent = `活子按未标死棋子暂计，其中两眼判活：蓝 ${position.sides[BLUE].alive} 子 · 红 ${position.sides[RED].alive} 子。其余仍需核对。`;
+      }
       for (const [color, id] of [[BLUE, 'confirm-blue'], [RED, 'confirm-red']]) {
         $(id).disabled = game.scoreConfirmed[color];
         $(id).setAttribute('aria-pressed', String(game.scoreConfirmed[color]));
@@ -235,6 +265,8 @@
         $('help-dialog').close();
         $('resume-dialog').close();
       }
+    } else if (assessing) {
+      message(`${name(game.turn)}正在判断形势`);
     } else if (scoring) {
       message(game.scoreConfirmed[BLUE] ? '蓝方已确认，请红方核对。' : game.scoreConfirmed[RED] ? '红方已确认，请蓝方核对。' : '计时已停止，请核对死子与预计得分。');
     } else if (game?.paused) {
@@ -313,6 +345,17 @@
     const changed = game.paused ? game.resume() : game.pause();
     if (changed) { sound('button'); message(`轮到${name(game.turn)}，请落子。`); }
     render();
+  };
+  $('assessment').onclick = () => {
+    if (game?.beginAssessment()) { resetCamera(); sound('button'); }
+    render();
+  };
+  $('end-assessment').onclick = () => {
+    if (game?.endAssessment()) {
+      resetCamera(); sound('button'); message(`轮到${name(game.turn)}，请落子。`);
+    }
+    render();
+    $('assessment').focus();
   };
   $('pass').onclick = () => {
     const color = game.turn;
