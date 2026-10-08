@@ -1,75 +1,77 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-
-  <title>Cocos Creator | SixSideGo</title>
-
-  <meta name="viewport" content="width=device-width,user-scalable=no,initial-scale=1, minimum-scale=1,maximum-scale=1"/>
-  <meta name="apple-mobile-web-app-capable" content="yes"/>
-  <meta name="full-screen" content="yes"/>
-  <meta name="screen-orientation" content="portrait"/>
-  <meta name="x5-fullscreen" content="true"/>
-  <meta name="360-fullscreen" content="true"/>
-  
-  <meta name="renderer" content="webkit"/>
-  <meta name="force-rendering" content="webkit"/>
-  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"/>
-
-  <link rel="stylesheet" type="text/css" href="style-desktop.css"/>
-  <link rel="icon" href="favicon.ico"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f5f3ec">
+  <meta name="description" content="六元围棋：在六边形棋盘上围地、提子。免费的同屏双人网页棋类游戏。">
+  <title>六元围棋 · Six Side Go</title>
+  <link rel="icon" href="favicon.ico">
+  <link rel="stylesheet" href="style.css">
+  <script defer src="src/game.js"></script>
+  <script defer src="src/board-view.js"></script>
+  <script defer src="src/app.js"></script>
 </head>
 <body>
-<h1 class="header">SixSideGo</h1>
-
-<div id="GameDiv" style="width:960px; height: 640px;">
-  <canvas id="GameCanvas" width="960" height="640"></canvas>
-  <div id="splash">
-    <div class="progress-bar stripes">
-      <span style="width: 0%"></span>
-    </div>
+  <div class="page">
+    <header class="masthead">
+      <a class="brand" href="./" aria-label="六元围棋首页"><span class="brand-mark" aria-hidden="true">⬡</span><span>六元围棋<small>SIX SIDE GO</small></span></a>
+      <div class="header-actions"><span class="local-badge">同屏双人</span><button id="sound" class="text-button" aria-pressed="true">音效开</button><button id="help" class="text-button">玩法说明 <span aria-hidden="true">↗</span></button></div>
+    </header>
+    <main class="game-layout">
+      <section class="board-panel" aria-label="六边形棋盘">
+        <div class="board-topline"><span><i class="status-dot"></i><span id="board-status">准备对局</span></span><span id="move-number">第 0 手</span></div>
+        <div id="board-viewport" class="board-viewport"><svg id="board" role="group" aria-label="六元围棋棋盘，方向键选择交点，回车落子"></svg></div>
+      </section>
+      <aside class="sidebar" aria-label="对局控制">
+        <div class="intro"><span class="eyebrow">一局之间 · 方寸之外</span><h1>六边生万象。</h1><p>三路相连，红蓝相争。<br>留一口气，围一片天地。</p></div>
+        <section class="turn-panel" aria-label="当前回合">
+          <div class="turn-heading"><span id="turn-label"><i class="stone-dot blue"></i>等待开局</span><span id="mode-label">每手 60 秒</span></div>
+          <div class="clock"><span id="timer">60</span><span class="clock-unit">秒 / 本手</span></div>
+          <div class="timer-track"><div id="timer-fill"></div></div>
+          <p id="message" role="status" aria-live="polite">选择节奏，开始一盘新棋。</p>
+        </section>
+        <div class="players"><div><span><i class="stone-dot blue"></i>蓝方 · 先手</span><strong id="blue-count">0 <small>子</small></strong><small id="blue-captures">提子 0</small></div><div><span><i class="stone-dot red"></i>红方 · 后手</span><strong id="red-count">0 <small>子</small></strong><small id="red-captures">提子 0</small></div></div>
+        <section id="scoring-panel" class="scoring-panel" aria-labelledby="scoring-title" hidden>
+          <h2 id="scoring-title">确认死子</h2>
+          <p id="auto-dead-note"></p>
+          <p>点选棋子可标记整块死子，再点取消。未标记的棋子也请双方核对。</p>
+          <p id="dead-count"></p>
+          <div class="score-preview" aria-label="移除标记死子后的预计得分"><div><span>蓝方预计</span><strong id="preview-blue">0</strong></div><div><span>红方预计</span><strong id="preview-red">0</strong></div></div>
+          <p id="preview-neutral"></p>
+          <div class="score-confirm-actions"><button id="confirm-blue" aria-pressed="false">蓝方确认</button><button id="confirm-red" aria-pressed="false">红方确认</button></div>
+          <p class="scoring-note">双方确认后结算；修改标记需重新确认。</p>
+          <button id="resume-play">有争议，继续对弈</button>
+        </section>
+        <div class="game-actions"><button id="pause" class="pause" aria-pressed="false" disabled>暂停计时</button><button id="pass" disabled>停一手 <span aria-hidden="true">→</span></button><button id="undo" disabled>悔棋 <span aria-hidden="true">↶</span></button><button id="resign" class="resign" disabled>认输</button></div>
+        <button id="new-game" class="primary">开始新棋局</button>
+        <p class="side-note">双方连续停一手后，确认死子并计分。</p>
+      </aside>
+    </main>
   </div>
-</div>
-
-<p class="footer">Made with <a href="https://www.cocos.com/products#CocosCreator" title="cocos creator">Cocos Creator</a></p>
-
-<script src="src/settings.js" charset="utf-8"></script>
-<script src="main.js" charset="utf-8"></script>
-
-<script type="text/javascript">
-(function () {
-    // open web debugger console
-    if (typeof VConsole !== 'undefined') {
-        window.vConsole = new VConsole();
-    }
-
-    var debug = window._CCSettings.debug;
-    var splash = document.getElementById('splash');
-    splash.style.display = 'block';
-
-    function loadScript (moduleName, cb) {
-      function scriptLoaded () {
-          document.body.removeChild(domScript);
-          domScript.removeEventListener('load', scriptLoaded, false);
-          cb && cb();
-      };
-      var domScript = document.createElement('script');
-      domScript.async = true;
-      domScript.src = moduleName;
-      domScript.addEventListener('load', scriptLoaded, false);
-      document.body.appendChild(domScript);
-    }
-
-    loadScript(debug ? 'cocos2d-js.js' : 'cocos2d-js-min.js', function () {
-      if (CC_PHYSICS_BUILTIN || CC_PHYSICS_CANNON) {
-        loadScript(debug ? 'physics.js' : 'physics-min.js', window.boot);
-      }
-      else {
-        window.boot();
-      }
-    });
-})();
-</script>
-
+  <dialog id="setup-dialog" aria-labelledby="setup-title">
+    <form method="dialog" id="setup-form">
+      <span class="eyebrow">落子之前</span><h2 id="setup-title">选一种对弈的节奏</h2><p>与身边的人共用棋盘，蓝方先行。</p>
+      <fieldset class="mode-options"><legend class="sr-only">每手思考时间</legend>
+        <label><input type="radio" name="seconds" value="15"><span><strong>快棋</strong><b>15 <small>秒</small></b><em>落子果断</em></span></label>
+        <label><input type="radio" name="seconds" value="60" checked autofocus><span><strong>常规</strong><b>60 <small>秒</small></b><em>从容攻守</em></span></label>
+        <label><input type="radio" name="seconds" value="300"><span><strong>慢棋</strong><b>300 <small>秒</small></b><em>细想一步</em></span></label>
+        <div class="custom-mode">
+          <label class="custom-choice"><input type="radio" name="seconds" value="custom" id="custom-mode"><span><strong>自定义</strong><em>每手时间</em></span></label>
+          <div class="custom-time"><label class="sr-only" for="custom-minutes">自定义每手分钟数</label><input id="custom-minutes" name="minutes" type="number" inputmode="decimal" min="0.1" max="180" step="0.1" value="3" required disabled><small>分钟</small></div>
+        </div>
+      </fieldset>
+      <p class="dialog-note">每次换手重新计时，超时判负。后台运行仍计时，请按暂停键。</p>
+      <button type="button" id="setup-start" class="primary">开始对局</button><button type="button" id="setup-cancel" class="dialog-cancel">先看看棋盘</button>
+    </form>
+  </dialog>
+  <dialog id="help-dialog" aria-labelledby="help-title">
+    <span class="eyebrow">六元围棋</span><h2 id="help-title">三条连接，一口生气。</h2>
+    <ol class="rules"><li><strong>轮流落子</strong>蓝方先行，红蓝交替，在空交点落一子。沿棋盘线相连的同色棋子组成一块。</li><li><strong>有气则活</strong>相邻的空交点就是“气”。对方整块棋子无气时被提走。自身无气且不能提子的点不能下。</li><li><strong>劫与循环和棋</strong>普通单劫不能立即回提。合法落子后，如果棋盘和下一手行棋方与历史局面完全相同，判循环和棋；单纯停手不触发和棋。</li><li><strong>先确认死子</strong>双方连续停一手后停止计时，程序先预标能够确定的死子。点选棋子可标记或取消整块死子；未预标的棋子仍需人工核对。修改标记会取消已有确认。双方分别确认后，移除死子并结算；有争议可由认为存在死子的一方先行，继续对弈。</li><li><strong>围地定胜负</strong>清除死子后，盘上棋子加上仅接触己方的整块空地，合计多者获胜；双方接触的空地不计分，无贴目。</li><li><strong>同屏对弈</strong>悔棋撤销上一次落子或停手，恢复当时剩余时间。超时或认输即结束。方向键选点，回车或空格落子；手机先点按棋盘放大，再点按交点操作，完成后自动还原；放大后可长按再拖动棋盘。</li></ol>
+    <button type="button" id="help-close" class="primary">知道了</button>
+  </dialog>
+  <dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title"></h2><p id="confirm-description"></p><div class="confirm-actions"><button id="confirm-no">继续对局</button><button id="confirm-yes" class="primary">确认</button></div></dialog>
+  <dialog id="resume-dialog" aria-labelledby="resume-title"><h2 id="resume-title">由哪方先下？</h2><p>由认为存在死子的一方先行，以实战确认。取消死子标记，保留原棋盘，并重新开始本手计时。</p><div class="score-confirm-actions"><button id="resume-blue">蓝方先下</button><button id="resume-red">红方先下</button></div><button type="button" id="resume-cancel" class="dialog-cancel">返回确认死子</button></dialog>
+  <noscript><p class="no-script">请启用 JavaScript 后开始对局。</p></noscript>
 </body>
 </html>

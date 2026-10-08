@@ -1,0 +1,10 @@
+{
+  "name": "six-side-go-web",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.cjs",
+    "test": "node --test tests/*.test.cjs",
+    "start": "node scripts/serve.cjs",
+    "verify:source": "node scripts/verify-source.cjs"
+  }
+}
