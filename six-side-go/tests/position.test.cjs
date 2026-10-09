@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { BOARD, Game, BLUE, RED, score, analyzeDead, estimatePosition } = require('../src/game.js');
+const { BOARD, Game, BLUE, RED, score, analyzeDead, estimatePosition, reviewPosition } = require('../src/game.js');
 
 function screenshotBoard() {
   const board = Array(486).fill(0);
@@ -124,4 +124,62 @@ test('潜力归属不会写入终局计分，原面积计分和确认流程保�
   assert.deepEqual(g.result.totals, confirmedScore);
   assert.deepEqual(g.result.totals, score(g.board));
   assert.deepEqual(g.result.totals, { blue: 14, red: 22, neutral: 324 });
+});
+
+test('终局明细和围空标记与正式计分一致，潜力保留但不加分', () => {
+  const board = screenshotBoard(), dead = analyzeDead(board).dead, before = board.slice();
+  const review = reviewPosition(board, dead), cleaned = board.slice();
+  for (const id of dead) cleaned[id] = 0;
+  assert.deepEqual(review.totals, { blue: 14, red: 22, neutral: 324 });
+  assert.deepEqual(review.totals, score(cleaned));
+  assert.ok(review.sides[BLUE].potential > 0 && review.sides[RED].potential > 0);
+  for (const [color, key] of [[BLUE, 'blue'], [RED, 'red']]) {
+    const side = review.sides[color];
+    assert.equal(side.total, side.stones + side.territory);
+    assert.equal(side.total, review.totals[key]);
+    assert.equal(side.territory, [...review.ownership.values()].filter(a => a.kind === 'territory' && a.owner === color).length);
+    assert.equal(side.potential, [...review.ownership.values()].filter(a => a.kind === 'potential' && a.owner === color).length);
+  }
+  assert.equal(review.neutral, review.open + review.contested + review.sides[BLUE].potential + review.sides[RED].potential);
+  assert.equal(review.sides[BLUE].total + review.sides[RED].total + review.neutral, 360);
+  assert.equal(review.ownership.get(284).kind, 'territory', '标死棋子的落点也按移除后的归属显示');
+  assert.equal(review.ownership.get(284).owner, RED);
+  assert.deepEqual(board, before); assert.deepEqual([...dead], [284]);
+});
+
+test('终局大围空按完整连通区域计分，不沿用中盘的小区域限制', () => {
+  const board = Array(486).fill(0);
+  for (const p of BOARD.boundary) board[p.id] = BLUE;
+  assert.equal(estimatePosition(board).sides[BLUE].territory, 0);
+  const review = reviewPosition(board);
+  assert.deepEqual(review.totals, { blue: 360, red: 0, neutral: 0 });
+  assert.equal(review.sides[BLUE].territory, 360 - BOARD.boundary.length);
+  assert.equal(review.sides[BLUE].potential, 0);
+  for (const p of BOARD.points) if (!board[p.id]) assert.deepEqual(review.ownership.get(p.id), { owner: BLUE, kind: 'territory', confidence: 1 });
+});
+
+test('空盘、双方开放棋形的终局计分不把势力潜力当作领地', () => {
+  const board = Array(486).fill(0);
+  assert.deepEqual(reviewPosition(board).totals, { blue: 0, red: 0, neutral: 360 });
+  board[229] = BLUE; board[40] = RED;
+  const review = reviewPosition(board);
+  assert.deepEqual(review.totals, { blue: 1, red: 1, neutral: 358 });
+  assert.ok(review.sides[BLUE].potential > 0 && review.sides[RED].potential > 0);
+  assert.equal(review.sides[BLUE].territory + review.sides[RED].territory, 0);
+});
+
+test('终局复盘修改标记后重算确切分数，取消后恢复且不覆盖结算结果', () => {
+  const g = new Game(60, 0); g.board = screenshotBoard();
+  g.pass(0); g.pass(0); g.confirmScore(BLUE); g.confirmScore(RED);
+  const result = structuredClone(g.result), board = g.board.slice(), captures = { ...g.captured };
+  const initial = g.reviewPosition();
+  assert.deepEqual(initial.totals, result.totals);
+  assert.equal(g.toggleDead(368, 999999).ok, true);
+  const changed = g.reviewPosition();
+  assert.notDeepEqual(changed.totals, initial.totals);
+  assert.deepEqual(changed.totals, g.previewScore());
+  assert.equal(changed.sides[BLUE].total, changed.sides[BLUE].stones + changed.sides[BLUE].territory);
+  g.toggleDead(368, 999999);
+  assert.deepEqual(g.reviewPosition(), initial);
+  assert.deepEqual(g.result, result); assert.deepEqual(g.board, board); assert.deepEqual(g.captured, captures);
 });

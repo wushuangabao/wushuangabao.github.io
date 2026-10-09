@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { BOARD, Game, BLUE, RED, simulateMove, analyzeDead, estimatePosition } = require('../src/game.js');
+const { BOARD, Game, BLUE, RED, groupAt, simulateMove, analyzeDead, estimatePosition } = require('../src/game.js');
 const { chooseMove, canUndo, undoRound, Opponent } = require('../src/ai.js');
 const choose = g => chooseMove(g, () => 0.5);
 
@@ -35,8 +35,43 @@ test('AI 会提取被叫吃的棋子，并救出己方被叫吃棋子', () => {
   attack.board[229] = RED; attack.board[228] = BLUE; attack.board[230] = BLUE;
   assert.equal(choose(attack), 202);
   const defend = new Game(60, 0);
-  defend.board[229] = BLUE; defend.board[228] = RED; defend.board[230] = RED;
-  assert.equal(choose(defend), 202);
+  for (const id of [229, 202, 201, 199]) defend.board[id] = BLUE;
+  for (const id of [228, 230, 203, 174]) defend.board[id] = RED;
+  assert.deepEqual([...groupAt(defend.board, 229).liberties], [200]);
+  assert.equal(choose(defend), 200, '连接接应棋后确实能脱险的棋仍应救出');
+  assert.ok(simulateMove(defend.board, BLUE, 200).own.liberties.size >= 3);
+});
+
+test('延长一子不等于救活：原单子救棋例实际可被连续打吃，AI 不再徒劳延长', () => {
+  const g = new Game(60, 0);
+  g.board[229] = BLUE; g.board[228] = RED; g.board[230] = RED;
+  assert.notEqual(choose(g), 202);
+  // 用正式落子规则单独核对这条强制变化：每次防守都只有一口气，最后五子全被提。
+  assert.ok(g.play(202, 0).ok);
+  for (const [attack, escape] of [[201, 203], [176, 204], [205, 231]]) {
+    assert.ok(g.play(attack, 0).ok);
+    assert.deepEqual([...groupAt(g.board, 229).liberties], [escape]);
+    assert.ok(g.play(escape, 0).ok);
+  }
+  assert.equal(g.play(232, 0).captured, 5);
+});
+
+test('气紧时不沿死路连续添子，换色、旋转和镜像后的真实三邻点连接行为一致', () => {
+  const transforms = [id => id, id => 485 - id, id => Math.floor(id / 27) * 27 + 26 - id % 27];
+  for (const transform of transforms) for (const color of [BLUE, RED]) for (const extended of [false, true]) {
+    const g = new Game(60, 0); g.turn = color;
+    for (const id of [218, 244, 270, 273, 274, ...(extended ? [220] : [])]) g.board[transform(id)] = 3 - color;
+    for (const id of [245, 246, ...(extended ? [247] : [])]) g.board[transform(id)] = color;
+    const before = structuredClone({ ...g }), id = choose(g);
+    assert.notEqual(id, transform(extended ? 248 : 247), '旧 AI 会连续在 247、248 添子，仍无法逃脱');
+    assert.ok(id === null || simulateMove(g.board, color, id, g.ko).ok);
+    assert.deepEqual({ ...g }, before, '追吃试算不能改变真实对局');
+    // 独立核对送子路径；不是将内部评分或选招顺序当作正确性依据。
+    if (!extended) {
+      for (const point of [247, 220, 248, 249, 275]) assert.ok(g.play(transform(point), 0).ok);
+      assert.equal(g.play(transform(276), 0).captured, 5);
+    }
+  }
 });
 
 test('AI 不立即回提劫、不下自杀点，也不主动填己方单点眼', () => {

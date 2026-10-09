@@ -6,6 +6,40 @@
 
   const neighbors = Array.from({ length: 486 }, (_, id) => BOARD.byId.get(id)?.neighbors || []);
 
+  // 沿真实三邻点连接续算连续打吃，避免把“延长后有两气”直接当成脱险。
+  // 仅供选招评估，不用于终局判死；深度、节点耗尽或遇劫都保留未知。
+  function caughtInChase(board, target, turn, ko) {
+    const defender = board[target], attacker = other(defender), path = new Set();
+    let examined = 0;
+    function read(position, turn, ko, depth) {
+      if (position[target] !== defender) return true;
+      const group = groupAt(position, target);
+      if (group.liberties.size > 2 || !depth || examined++ >= 96) return false;
+      const key = `${turn}:${ko}:${position.join('')}`;
+      if (path.has(key)) return false;
+      path.add(key);
+      const points = new Set(group.liberties);
+      if (turn === defender) {
+        const checked = new Set();
+        for (const id of group.stones) for (const n of neighbors[id]) if (position[n] === attacker && !checked.has(n)) {
+          const enemy = groupAt(position, n);
+          for (const stone of enemy.stones) checked.add(stone);
+          // 反提周围的棋也能增气，不能只检查顺着最后一口气逃跑。
+          if (enemy.liberties.size === 1) points.add([...enemy.liberties][0]);
+        }
+      }
+      const moves = [...points].map(id => simulateMove(position, turn, id, ko)).filter(move => move.ok);
+      moves.sort((a, b) => b.captured - a.captured);
+      const caught = turn === attacker
+        ? moves.some(move => move.ko === null && read(move.board, defender, move.ko, depth - 1))
+        : moves.every(move => move.ko === null && read(move.board, attacker, move.ko, depth - 1)) &&
+          read(position, attacker, null, depth - 1); // 不应子也须能被提，不能把不能填自己的眼误判为被吃。
+      path.delete(key);
+      return caught;
+    }
+    return read(board, turn, ko, 10);
+  }
+
   function analyze(board) {
     const blocks = Array(486), groups = [], eyes = Array(486).fill(null);
     for (const p of BOARD.points) if (board[p.id] && !blocks[p.id]) {
@@ -60,6 +94,7 @@
         value += Math.min(group.potential, 2 - group.eyes) * 9;
         value -= libs === 1 ? 38 + size * 32 : libs === 2 ? 8 + size * 5 : 0;
       }
+      group.value = value;
       values[group.color] += value;
     }
     for (const p of BOARD.points) if (!board[p.id]) {
@@ -120,6 +155,11 @@
       move.position = analyze(move.board);
       // 扣除本手新增棋子的固定价值，避免把在自家空里填子当成收益。
       move.value = move.position.values[turn] - move.position.values[enemy] + move.shape - 90;
+      if (move.own.liberties.size <= 2 && caughtInChase(move.board, move.id, enemy, move.ko)) {
+        // 仍能被连续打吃提走的整块棋，不应因多添一子、暂时多一气获得救活奖励。
+        // 提子收益仍保留，因此允许有实际收益的弃子交换。
+        move.value -= Math.max(0, move.position.blocks[move.id].value);
+      }
       move.tie = random() * 0.05;
     }
     moves.sort((a, b) => b.value + b.tie - a.value - a.tie);
@@ -142,7 +182,11 @@
             const escape = simulateMove(reply.board, turn, id, reply.ko);
             if (!escape.ok) continue;
             const safe = analyze(escape.board);
-            response = Math.max(response, safe.values[turn] - safe.values[enemy] - 90);
+            let continuation = safe.values[turn] - safe.values[enemy] - 90;
+            if (escape.own.liberties.size <= 2 && caughtInChase(escape.board, id, enemy, escape.ko)) {
+              continuation -= Math.max(0, safe.blocks[id].value);
+            }
+            response = Math.max(response, continuation);
           }
         }
         worst = Math.min(worst, response + move.shape);

@@ -64,7 +64,7 @@
     return { stones, liberties };
   }
 
-  function score(board) {
+  function score(board, onRegion = null) {
     const totals = { blue: 0, red: 0, neutral: 0 }, visited = new Set();
     for (const p of BOARD.points) {
       const color = board[p.id];
@@ -82,6 +82,7 @@
       }
       const owner = borders.size === 1 ? [...borders][0] : EMPTY;
       totals[owner === BLUE ? 'blue' : owner === RED ? 'red' : 'neutral'] += region.length;
+      onRegion?.(region, owner);
     }
     return totals;
   }
@@ -288,6 +289,28 @@
     return { sides, ownership, contested, open, neutral: contested + open };
   }
 
+  // 终局复盘复用势力标记，但围空归属与总分必须来自正式面积计分。
+  // 中立空区内仍可显示潜力；它们不是领地，不能加入得分。
+  function reviewPosition(board, deadStones = new Set()) {
+    const position = estimatePosition(board, deadStones), scoringBoard = board.slice();
+    for (const id of deadStones) scoringBoard[id] = EMPTY;
+    const totals = score(scoringBoard, (region, owner) => {
+      if (owner) for (const id of region) position.ownership.set(id, { owner, kind: 'territory', confidence: 1 });
+    });
+    for (const color of [BLUE, RED]) {
+      position.sides[color].territory = 0;
+      position.sides[color].potential = 0;
+    }
+    position.contested = 0; position.open = 0;
+    for (const area of position.ownership.values()) {
+      if (area.kind === 'territory' || area.kind === 'potential') position.sides[area.owner][area.kind]++;
+      else if (area.kind === 'contested') position.contested++;
+      else if (area.kind === 'open') position.open++;
+    }
+    for (const color of [BLUE, RED]) position.sides[color].total = position.sides[color].stones + position.sides[color].territory;
+    return { ...position, neutral: totals.neutral, totals };
+  }
+
   // 对局与 AI 共用同一份落子规则；试算只返回副本，不触碰历史或计时。
   function simulateMove(board, turn, id, ko = null) {
     if (!BOARD.byId.has(id)) return { ok: false, reason: '请在棋盘交点落子' };
@@ -331,7 +354,7 @@
       this.deadline = now + seconds * 1000;
     }
     get paused() { return this.pausedRemainingMs !== null; }
-    get postgameReview() { return Boolean(this.result && ['resign', 'timeout'].includes(this.result.reason)); }
+    get postgameReview() { return Boolean(this.result); }
     get reviewing() { return this.scoring || this.assessing || this.postgameReview; }
     prepareDeadReview() {
       this.deadStones = analyzeDead(this.board).dead;
@@ -434,6 +457,7 @@
     }
     previewScore() { return score(this.scoringBoard()); }
     estimatePosition() { return estimatePosition(this.board, this.deadStones); }
+    reviewPosition() { return reviewPosition(this.board, this.deadStones); }
     confirmScore(color) {
       if (!this.scoring || this.result || ![BLUE, RED].includes(color) || this.scoreConfirmed[color]) return false;
       this.scoreConfirmed[color] = true;
@@ -474,11 +498,13 @@
       this.scoring = false;
       this.assessing = false;
       this.deadStones.clear();
+      this.autoDeadCount = 0;
       this.result = { winner, reason, totals };
-      if (this.postgameReview) this.prepareDeadReview();
+      // 计分终局已实际移除双方确认的死子，不能再预标而推翻初始结算。
+      if (reason !== 'score') this.prepareDeadReview();
     }
   }
-  const api = { BOARD, Game, groupAt, simulateMove, score, analyzeDead, estimatePosition, EMPTY, BLUE, RED, other };
+  const api = { BOARD, Game, groupAt, simulateMove, score, analyzeDead, estimatePosition, reviewPosition, EMPTY, BLUE, RED, other };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SixSideGo = api;
 })(globalThis);

@@ -188,12 +188,13 @@
     const assessing = Boolean(game?.assessing);
     const postgame = Boolean(game?.postgameReview);
     const scoring = Boolean(game?.reviewing);
-    const position = assessing ? game.estimatePosition() : null;
+    const showPosition = assessing || postgame;
+    const position = postgame ? game.reviewPosition() : assessing ? game.estimatePosition() : null;
     const playing = game && !game.result && !game.paused && !scoring;
     const active = playing && !aiTurn();
     if (!active && !scoring) resetCamera();
-    document.body.classList.toggle('scoring', Boolean(game?.scoring));
-    document.body.classList.toggle('assessing', assessing);
+    document.body.classList.toggle('scoring', Boolean(game?.scoring) || postgame);
+    document.body.classList.toggle('assessing', showPosition);
     document.body.classList.toggle('ai-game', Boolean(aiColor));
     turnPanel.classList.toggle('finished', Boolean(game?.result));
     turnPanel.setAttribute('aria-label', game?.result ? '对局结果' : '当前回合');
@@ -208,7 +209,7 @@
       if (color === BLUE) blue++; else if (color === RED) red++;
       const dead = scoring && game.deadStones.has(p.id);
       const area = position?.ownership.get(p.id);
-      const showArea = !color && area && ['territory', 'potential', 'contested'].includes(area.kind);
+      const showArea = (!color || dead) && area && ['territory', 'potential', 'contested'].includes(area.kind);
       node.setAttribute('class', `point ${color === BLUE ? 'blue' : color === RED ? 'red' : 'empty'}${game?.lastMove === p.id ? ' last' : ''}${game?.ko === p.id ? ' ko' : ''}${dead ? ' dead' : ''}${showArea ? ` area-${area.kind} area-${area.owner === BLUE ? 'blue' : area.owner === RED ? 'red' : 'neutral'}` : ''}`);
       node.style.setProperty('--area-opacity', area?.kind === 'potential' ? String(0.45 + area.confidence * 0.5) : '1');
       node.querySelector('.piece').setAttribute('r', color ? 8.8 : 1.7);
@@ -240,34 +241,47 @@
     $('new-game').textContent = game ? '再开一局' : '开始新棋局';
     $('turn-label').innerHTML = game?.result ? (game.result.winner ? `${name(game.result.winner)}获胜` : '双方和棋') : game?.scoring ? aiColor ? '等待你确认' : '等待双方确认' : game ? `<i class="stone-dot ${game.turn === BLUE ? 'blue' : 'red'}"></i>${name(game.turn)}${aiColor ? aiTurn() ? ' · AI' : ' · 你' : '执子'}${game.paused ? ' · 已暂停' : ''}` : '<i class="stone-dot blue"></i>等待开局';
     $('scoring-panel').hidden = !scoring;
-    $('ownership-legend').hidden = !assessing;
-    $('position-details').hidden = !assessing;
-    $('dead-count').hidden = assessing;
+    $('ownership-legend').hidden = !showPosition;
+    $('position-details').hidden = !showPosition;
+    $('dead-count').hidden = showPosition;
+    $('potential-legend').textContent = postgame ? '空心：潜力空地 · 不计分' : '空心：潜力空地';
+    $('area-legend-note').textContent = postgame ? '实心按正式规则计分；空心、灰点及无标记空地均不计分' : '蓝 / 红表示归属倾向，未标处尚不明朗';
+    $('score-preview').setAttribute('aria-label', postgame ? '按当前死子标记计算的确切复盘得分' : '移除标记死子后的预计得分');
+    $('preview-blue-label').textContent = postgame ? '蓝方复盘得分' : '蓝方预计';
+    $('preview-red-label').textContent = postgame ? '红方复盘得分' : '红方预计';
+    $('stones-label').textContent = postgame ? '未标死棋子' : '活子';
+    $('potential-label').textContent = postgame ? '潜力空地 · 不计分' : '潜力空地';
+    $('position-explanation-title').textContent = postgame ? '计分说明' : '估算说明';
+    $('position-explanation-text').textContent = postgame
+      ? '复盘得分 = 未标死棋子 + 已围空地。移除当前标记死子后，仅接触一方的连通空地全部计入该方；双方接触的空地中立。空心潜力标记仅展示势力倾向，不计分；提子不额外加分，无贴目。调整标记只重算复盘，不改变本局结果。'
+      : '参考总分 = 活子 + 已围空地 + 潜力空地。蓝红空心方块越清晰，当前归属倾向越强。大空区仍可被侵入，保留为潜力或不明朗；双方都能影响的点标为争夺。攻杀、先后手和劫争可能改变结果，预估不作终局计分。';
     $('assessment').disabled = !game || Boolean(game.result) || scoring || aiTurn();
     $('assessment').hidden = Boolean(game?.result);
     $('scoring-title').textContent = postgame ? '终局复盘' : assessing ? '形势判断' : '确认死子';
     $('score-confirm-actions').hidden = assessing || postgame;
-    $('scoring-note').textContent = postgame ? '可调整死子标记查看分数，棋盘保留至新开一局。复盘分数不改变认输或超时的胜负结果。' : assessing ? '潜力空地并非确定得分，仅供参考。关闭后清除标记，继续对局。' : aiColor ? '陪练模式由你核对死子，确认后 AI 接受此结果；也可继续对弈。' : '双方确认后结算；修改标记需重新确认。';
+    $('scoring-note').textContent = postgame ? '复盘按当前死子标记计算确切分数，潜力不计分。调整标记不会改写已确定的胜负和结算分数。' : assessing ? '潜力空地并非确定得分，仅供参考。关闭后清除标记，继续对局。' : aiColor ? '陪练模式由你核对死子，确认后 AI 接受此结果；也可继续对弈。' : '双方确认后结算；修改标记需重新确认。';
     $('resume-play').hidden = assessing || postgame;
     $('end-assessment').hidden = !assessing;
     document.querySelector('.game-actions').hidden = scoring;
     if (scoring) {
-      const totals = assessing ? { blue: position.sides[BLUE].total, red: position.sides[RED].total } : game.previewScore();
+      const totals = postgame ? position.totals : assessing ? { blue: position.sides[BLUE].total, red: position.sides[RED].total } : game.previewScore();
       const deadBlue = [...game.deadStones].filter(id => game.board[id] === BLUE).length;
-      $('auto-dead-note').textContent = game.autoDeadCount ? `程序已预标 ${game.autoDeadCount} 枚死子，请核对。` : aiColor ? '程序未预标死子，请核对。' : '程序未预标死子，请双方核对。';
+      $('auto-dead-note').textContent = postgame && game.result.reason === 'score' ? '初始复盘沿用双方确认后的棋盘。可调整标记复盘。' : game.autoDeadCount ? `程序已预标 ${game.autoDeadCount} 枚死子，请核对。` : aiColor ? '程序未预标死子，请核对。' : '程序未预标死子，请双方核对。';
       $('dead-count').textContent = `当前标记：蓝 ${deadBlue} 子 · 红 ${game.deadStones.size - deadBlue} 子`;
       $('preview-blue').textContent = `${assessing ? '≈ ' : ''}${totals.blue} 分`;
       $('preview-red').textContent = `${assessing ? '≈ ' : ''}${totals.red} 分`;
       $('preview-neutral').textContent = assessing ? `双方争夺 ${position.contested} 点 · 尚不明朗 ${position.open} 点 · 无贴目` : `中立 ${totals.neutral} 点 · 无贴目`;
-      if (assessing) {
+      if (showPosition) {
         const difference = totals.blue - totals.red;
-        $('position-lead').textContent = difference === 0 ? '当前势力估算相当' : `${name(difference > 0 ? BLUE : RED)}暂领先约 ${Math.abs(difference)} 分`;
+        $('position-lead').textContent = postgame
+          ? difference === 0 ? '按当前标记，复盘分数相同' : `按当前标记，${name(difference > 0 ? BLUE : RED)}多 ${Math.abs(difference)} 分`
+          : difference === 0 ? '当前势力估算相当' : `${name(difference > 0 ? BLUE : RED)}暂领先约 ${Math.abs(difference)} 分`;
         for (const [color, key] of [[BLUE, 'blue'], [RED, 'red']]) {
           for (const field of ['stones', 'territory', 'potential', 'dead']) {
             $(`position-${key}-${field}`).textContent = position.sides[color][field];
           }
         }
-        $('life-detail').textContent = `活子按未标死棋子暂计，其中两眼判活：蓝 ${position.sides[BLUE].alive} 子 · 红 ${position.sides[RED].alive} 子。其余仍需核对。`;
+        $('life-detail').textContent = `${postgame ? '未标死棋子按盘上棋子计分' : '活子按未标死棋子暂计'}，其中两眼判活：蓝 ${position.sides[BLUE].alive} 子 · 红 ${position.sides[RED].alive} 子。其余仍需核对。`;
       }
       for (const [color, id] of [[BLUE, 'confirm-blue'], [RED, 'confirm-red']]) {
         $(id).hidden = Boolean(aiColor && color === aiColor);

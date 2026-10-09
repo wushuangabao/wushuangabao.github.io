@@ -169,7 +169,9 @@ test('从合法对局进入确认阶段，自动预标修正原先反转的胜�
   assert.deepEqual(g.result, { winner: BLUE, reason: 'score', totals: { blue: 181, red: 179, neutral: 0 } });
   assert.equal(g.board[70], 0); assert.equal(g.captured[BLUE], 1);
   assert.equal(g.scoring, false); assert.equal(g.deadStones.size, 0);
-  assert.equal(g.toggleDead(228).ok, false); assert.equal(g.confirmScore(BLUE), false);
+  const result = structuredClone(g.result), board = g.board.slice();
+  assert.equal(g.toggleDead(228).ok, true); assert.equal(g.confirmScore(BLUE), false);
+  assert.deepEqual(g.result, result); assert.deepEqual(g.board, board);
   assert.equal(g.resumePlay(RED, 999999), false); assert.equal(g.undo(999999), false);
 });
 
@@ -394,4 +396,41 @@ test('形势判断期间超时切换终局复盘，重新预标并保留人工�
   assert.deepEqual([...g.deadStones], [70]);
   assert.equal(g.toggleDead(70, 70000).ok, true);
   assert.equal(g.board[70], RED);
+});
+
+test('计分胜负、计分平局、循环和棋均进入复盘，并继续锁定全部对局操作', () => {
+  const scored = playFixture(deadFixture());
+  scored.pass(0); scored.pass(0); scored.confirmScore(BLUE); scored.confirmScore(RED);
+  const draw = new Game(60, 0);
+  draw.pass(0); draw.pass(0); draw.confirmScore(BLUE); draw.confirmScore(RED);
+  const loop = tripleKo();
+  for (const id of [202, 97, 364, 229, 70, 391]) assert.ok(loop.play(id, 0).ok);
+  assert.equal(scored.result.reason, 'score'); assert.ok(scored.result.winner);
+  assert.equal(draw.result.winner, 0); assert.equal(loop.result.reason, 'repetition');
+  for (const g of [scored, draw, loop]) {
+    const result = structuredClone(g.result), board = g.board.slice(), history = structuredClone(g.history);
+    assert.equal(g.postgameReview, true); assert.equal(g.reviewing, true);
+    assert.equal(g.assessing, false); assert.equal(g.scoring, false);
+    assert.deepEqual(g.reviewPosition().totals, g.previewScore());
+    assert.equal(g.play(40, 999999).ok, false);
+    for (const method of ['pass', 'undo', 'pause', 'resume', 'resign', 'beginAssessment', 'endAssessment']) assert.equal(g[method](999999), false);
+    assert.equal(g.confirmScore(BLUE), false); assert.equal(g.resumePlay(BLUE, 999999), false);
+    if (g.board.some(Boolean)) {
+      const id = BOARD.points.find(p => g.board[p.id]).id;
+      assert.equal(g.toggleDead(id, 999999).ok, true);
+      assert.equal(g.toggleDead(id, 999999).ok, true);
+    }
+    assert.deepEqual(g.result, result); assert.deepEqual(g.board, board); assert.deepEqual(g.history, history);
+  }
+});
+
+test('确认计分后的初始复盘尊重人工取消的死子，不重新预标推翻已确认分数', () => {
+  const g = playFixture(deadFixture());
+  g.pass(0); g.pass(0);
+  assert.deepEqual([...g.deadStones], [70]);
+  g.toggleDead(70, 0);
+  g.confirmScore(BLUE); g.confirmScore(RED);
+  assert.equal(g.board[70], RED); assert.equal(g.deadStones.size, 0); assert.equal(g.autoDeadCount, 0);
+  assert.deepEqual(g.reviewPosition().totals, g.result.totals);
+  assert.deepEqual(g.result.totals, { blue: 179, red: 180, neutral: 1 });
 });
