@@ -4,11 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f5f3ec">
-  <meta name="description" content="六元围棋：在六边形棋盘上围地、提子。免费的同屏双人网页棋类游戏。">
+  <meta name="description" content="六元围棋：在六边形棋盘上围地、提子。支持本地 AI 陪练与同屏双人对弈。">
   <title>六元围棋 · Six Side Go</title>
   <link rel="icon" href="favicon.ico">
   <link rel="stylesheet" href="style.css">
   <script defer src="src/game.js"></script>
+  <script defer src="src/ai.js"></script>
   <script defer src="src/board-view.js"></script>
   <script defer src="src/app.js"></script>
 </head>
@@ -74,7 +75,16 @@
   </div>
   <dialog id="setup-dialog" aria-labelledby="setup-title">
     <form method="dialog" id="setup-form">
-      <span class="eyebrow">落子之前</span><h2 id="setup-title">选一种对弈的节奏</h2><p>与身边的人共用棋盘，蓝方先行。</p>
+      <span class="eyebrow">落子之前</span><h2 id="setup-title">选对手，定节奏</h2><p>与 AI 练习，或与身边的人共用棋盘。蓝方先行。</p>
+      <fieldset class="opponent-options"><legend>对弈方式</legend>
+        <label><input type="radio" name="opponent" value="ai" checked> 与 AI 对弈</label>
+        <label><input type="radio" name="opponent" value="local"> 同屏双人</label>
+      </fieldset>
+      <fieldset id="ai-options" class="opponent-options"><legend>你执哪一方？</legend>
+        <label><input type="radio" name="human" value="1" checked> 蓝方 · 先手</label>
+        <label><input type="radio" name="human" value="2"> 红方 · 后手</label>
+      </fieldset>
+      <p id="ai-note" class="dialog-note">入门 AI，本地运行。你停手后，AI 会在预计结算领先或没有紧急提子、救子时同意收官；死子由你核对后确认。</p>
       <fieldset class="mode-options"><legend class="sr-only">每手思考时间</legend>
         <label><input type="radio" name="seconds" value="15"><span><strong>快棋</strong><b>15 <small>秒</small></b><em>落子果断</em></span></label>
         <label><input type="radio" name="seconds" value="60" checked autofocus><span><strong>常规</strong><b>60 <small>秒</small></b><em>从容攻守</em></span></label>
@@ -91,6 +101,7 @@
   <dialog id="help-dialog" aria-labelledby="help-title">
     <span class="eyebrow">六元围棋</span><h2 id="help-title">三条连接，一口生气。</h2>
     <ol class="rules"><li><strong>轮流落子</strong>蓝方先行，红蓝交替，在空交点落一子。沿棋盘线相连的同色棋子组成一块。</li><li><strong>有气则活</strong>相邻的空交点就是“气”。对方整块棋子无气时被提走。自身无气且不能提子的点不能下。</li><li><strong>劫与循环和棋</strong>普通单劫不能立即回提。合法落子后，如果棋盘和下一手行棋方与历史局面完全相同，判循环和棋；单纯停手不触发和棋。</li><li><strong>先确认死子</strong>双方连续停一手后停止计时，程序先预标能够确定的死子。点选棋子可标记或取消整块死子；未预标的棋子仍需人工核对。修改标记会取消已有确认。双方分别确认后，移除死子并结算；有争议可由认为存在死子的一方先行，继续对弈。</li><li><strong>围地定胜负</strong>清除死子后，盘上棋子加上仅接触己方的整块空地，合计多者获胜；双方接触的空地不计分，无贴目。</li><li><strong>同屏对弈</strong>悔棋撤销上一次落子或停手，恢复当时剩余时间。超时或认输即结束。方向键选点，回车或空格落子；手机先点按棋盘放大，再点按交点操作，完成后自动还原；放大后可长按再拖动棋盘。</li></ol>
+    <p>AI 陪练可选先后手，完全本地运行。悔棋会撤回你上一手及 AI 应手。你停手后，AI 会在预计结算领先或没有紧急提子、救子时接受收官；死子由你核对并确认，也可继续对弈。</p>
     <button type="button" id="help-close" class="primary">知道了</button>
   </dialog>
   <dialog id="confirm-dialog" aria-labelledby="confirm-title"><h2 id="confirm-title"></h2><p id="confirm-description"></p><div class="confirm-actions"><button id="confirm-no">继续对局</button><button id="confirm-yes" class="primary">确认</button></div></dialog>

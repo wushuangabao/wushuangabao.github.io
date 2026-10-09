@@ -291,6 +291,7 @@ a {
 #preview-blue { color:var(--blue); }
 #preview-red { color:var(--red); }
 .score-confirm-actions { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.ai-game #score-confirm-actions button:not([hidden]) { grid-column:1 / -1; }
 .score-confirm-actions button { padding:10px 5px; font-size:18px; min-height:52px; background:#fafaf3; }
 .score-confirm-actions button[aria-pressed="true"] { background:var(--green); color:white; opacity:1; border-color:var(--green); }
 .scoring-note, #preview-neutral { color:var(--muted); }
@@ -589,6 +590,14 @@ dialog p {
   font-size:16px;
   line-height:1.9;
 }
+
+.opponent-options {
+  border:0; padding:0; margin:18px 0; display:flex; flex-wrap:wrap; gap:12px 24px;
+}
+.opponent-options legend { font-size:18px; margin-bottom:10px; }
+.opponent-options label { display:flex; align-items:center; gap:8px; min-height:44px; cursor:pointer; }
+.opponent-options input { accent-color:var(--green); width:18px; height:18px; }
+.opponent-options[hidden] { display:none; }
 
 .mode-options {
   border:0;

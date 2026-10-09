@@ -11,6 +11,16 @@
   const timerFill = $('timer-fill');
   const turnPanel = document.querySelector('.turn-panel');
   let game = null, soundEnabled = true, selected = 229, confirmation = null, ended = false;
+  let aiColor = null, humanColor = BLUE;
+  const aiTurn = () => Boolean(game && aiColor && game.turn === aiColor);
+  const opponent = new SixSideGoAI.Opponent({ onMove(result) {
+    resetCamera();
+    if (result?.ok) {
+      sound(result.passed ? 'button' : result.captured ? 'chessDead' : 'chessDown');
+      message(result.passed ? 'AI 停一手，请继续落子或停手收官。' : `AI 已落子，轮到你（${name(humanColor)}）。`);
+    }
+    render();
+  } });
   const sounds = Object.fromEntries(['button', 'chessDown', 'chessDead', 'gameOver'].map(key => [key, new Audio(`assets/audio/${key}.mp3`)]));
   function sound(key) {
     if (!soundEnabled) return;
@@ -78,6 +88,7 @@
   function boardTap(event) {
     if (!game) { $('setup-dialog').showModal(); return; }
     if ((game.tick() && !game.postgameReview) || (game.paused && !game.reviewing)) { render(); return; }
+    if (aiTurn() && !game.reviewing) { message('AI 正在思考，请稍候。'); return; }
     const point = boardCoordinates(event);
     if (!camera.zoomed) {
       const pixelsPerUnit = svg.getScreenCTM().a;
@@ -166,6 +177,7 @@
       if (!game.assessing && !game.result) message(result.ok ? `${result.marked ? '已标记' : '已取消'} ${result.count} 枚死子。请双方重新核对并确认。` : result.reason);
       return;
     }
+    if (aiTurn()) { message('AI 正在思考，请稍候。'); return; }
     const result = game.play(id);
     resetCamera();
     if (result.ok) { sound(result.captured ? 'chessDead' : 'chessDown'); message(result.captured ? `提走 ${result.captured} 子，轮到${name(game.turn)}。` : `轮到${name(game.turn)}，请落子。`); }
@@ -177,10 +189,12 @@
     const postgame = Boolean(game?.postgameReview);
     const scoring = Boolean(game?.reviewing);
     const position = assessing ? game.estimatePosition() : null;
-    const active = game && !game.result && !game.paused && !scoring;
+    const playing = game && !game.result && !game.paused && !scoring;
+    const active = playing && !aiTurn();
     if (!active && !scoring) resetCamera();
     document.body.classList.toggle('scoring', Boolean(game?.scoring));
     document.body.classList.toggle('assessing', assessing);
+    document.body.classList.toggle('ai-game', Boolean(aiColor));
     turnPanel.classList.toggle('finished', Boolean(game?.result));
     turnPanel.setAttribute('aria-label', game?.result ? '对局结果' : '当前回合');
     document.body.dataset.turn = game?.turn === RED ? 'red' : 'blue';
@@ -209,33 +223,38 @@
     $('blue-captures').textContent = `提子 ${game?.captured[BLUE] || 0}`;
     $('red-captures').textContent = `提子 ${game?.captured[RED] || 0}`;
     $('pass').disabled = !active; $('resign').disabled = !active;
-    $('undo').disabled = !active || !game.history.length;
+    $('undo').disabled = aiColor ? !SixSideGoAI.canUndo(game, humanColor) : !active || !game.history.length;
+    $('undo').title = aiColor ? '撤回你上一手及 AI 的应手' : '撤回上一手';
     $('pause').disabled = !game || Boolean(game.result) || scoring;
     $('pause').hidden = Boolean(game?.result);
     $('pause').textContent = game?.paused ? '继续计时' : '暂停计时';
     $('pause').setAttribute('aria-pressed', String(Boolean(game?.paused)));
     $('move-number').textContent = `第 ${game?.moveNumber || 0} 手`;
-    $('board-status').textContent = game?.result ? '本局已结束' : assessing ? '形势判断' : scoring ? '确认死子' : game?.paused ? '已暂停' : active ? '对弈中' : '准备对局';
+    $('board-status').textContent = game?.result ? '本局已结束' : assessing ? '形势判断' : scoring ? '确认死子' : game?.paused ? '已暂停' : playing ? aiTurn() ? 'AI 思考中' : '对弈中' : '准备对局';
+    document.querySelector('.local-badge').textContent = aiColor ? `AI 陪练 · 你执${name(humanColor)}` : '同屏双人';
+    for (const [index, color] of [[0, BLUE], [1, RED]]) {
+      document.querySelectorAll('.players>div>span')[index].innerHTML = `<i class="stone-dot ${color === BLUE ? 'blue' : 'red'}"></i>${name(color)} · ${aiColor ? color === aiColor ? 'AI' : '你' : color === BLUE ? '先手' : '后手'}`;
+    }
     const duration = game?.seconds || 60;
     $('mode-label').textContent = game?.scoring ? '计时已停止' : duration > 60 ? `每手 ${duration / 60} 分钟` : `每手 ${duration} 秒`;
     $('new-game').textContent = game ? '再开一局' : '开始新棋局';
-    $('turn-label').innerHTML = game?.result ? (game.result.winner ? `${name(game.result.winner)}获胜` : '双方和棋') : game?.scoring ? '等待双方确认' : game ? `<i class="stone-dot ${game.turn === BLUE ? 'blue' : 'red'}"></i>${name(game.turn)}${game.paused ? ' · 已暂停' : '执子'}` : '<i class="stone-dot blue"></i>等待开局';
+    $('turn-label').innerHTML = game?.result ? (game.result.winner ? `${name(game.result.winner)}获胜` : '双方和棋') : game?.scoring ? aiColor ? '等待你确认' : '等待双方确认' : game ? `<i class="stone-dot ${game.turn === BLUE ? 'blue' : 'red'}"></i>${name(game.turn)}${aiColor ? aiTurn() ? ' · AI' : ' · 你' : '执子'}${game.paused ? ' · 已暂停' : ''}` : '<i class="stone-dot blue"></i>等待开局';
     $('scoring-panel').hidden = !scoring;
     $('ownership-legend').hidden = !assessing;
     $('position-details').hidden = !assessing;
     $('dead-count').hidden = assessing;
-    $('assessment').disabled = !game || Boolean(game.result) || scoring;
+    $('assessment').disabled = !game || Boolean(game.result) || scoring || aiTurn();
     $('assessment').hidden = Boolean(game?.result);
     $('scoring-title').textContent = postgame ? '终局复盘' : assessing ? '形势判断' : '确认死子';
     $('score-confirm-actions').hidden = assessing || postgame;
-    $('scoring-note').textContent = postgame ? '可调整死子标记查看分数，棋盘保留至新开一局。复盘分数不改变认输或超时的胜负结果。' : assessing ? '潜力空地并非确定得分，仅供参考。关闭后清除标记，继续对局。' : '双方确认后结算；修改标记需重新确认。';
+    $('scoring-note').textContent = postgame ? '可调整死子标记查看分数，棋盘保留至新开一局。复盘分数不改变认输或超时的胜负结果。' : assessing ? '潜力空地并非确定得分，仅供参考。关闭后清除标记，继续对局。' : aiColor ? '陪练模式由你核对死子，确认后 AI 接受此结果；也可继续对弈。' : '双方确认后结算；修改标记需重新确认。';
     $('resume-play').hidden = assessing || postgame;
     $('end-assessment').hidden = !assessing;
     document.querySelector('.game-actions').hidden = scoring;
     if (scoring) {
       const totals = assessing ? { blue: position.sides[BLUE].total, red: position.sides[RED].total } : game.previewScore();
       const deadBlue = [...game.deadStones].filter(id => game.board[id] === BLUE).length;
-      $('auto-dead-note').textContent = game.autoDeadCount ? `程序已预标 ${game.autoDeadCount} 枚死子，请核对。` : '程序未预标死子，请双方核对。';
+      $('auto-dead-note').textContent = game.autoDeadCount ? `程序已预标 ${game.autoDeadCount} 枚死子，请核对。` : aiColor ? '程序未预标死子，请核对。' : '程序未预标死子，请双方核对。';
       $('dead-count').textContent = `当前标记：蓝 ${deadBlue} 子 · 红 ${game.deadStones.size - deadBlue} 子`;
       $('preview-blue').textContent = `${assessing ? '≈ ' : ''}${totals.blue} 分`;
       $('preview-red').textContent = `${assessing ? '≈ ' : ''}${totals.red} 分`;
@@ -251,9 +270,10 @@
         $('life-detail').textContent = `活子按未标死棋子暂计，其中两眼判活：蓝 ${position.sides[BLUE].alive} 子 · 红 ${position.sides[RED].alive} 子。其余仍需核对。`;
       }
       for (const [color, id] of [[BLUE, 'confirm-blue'], [RED, 'confirm-red']]) {
+        $(id).hidden = Boolean(aiColor && color === aiColor);
         $(id).disabled = game.scoreConfirmed[color];
         $(id).setAttribute('aria-pressed', String(game.scoreConfirmed[color]));
-        $(id).textContent = `${name(color)}${game.scoreConfirmed[color] ? '已确认' : '确认'}`;
+        $(id).textContent = aiColor ? '确认死子并结算' : `${name(color)}${game.scoreConfirmed[color] ? '已确认' : '确认'}`;
       }
     }
     if (game?.result) {
@@ -271,8 +291,11 @@
       message(game.scoreConfirmed[BLUE] ? '蓝方已确认，请红方核对。' : game.scoreConfirmed[RED] ? '红方已确认，请蓝方核对。' : '计时已停止，请核对死子与预计得分。');
     } else if (game?.paused) {
       message('计时已暂停，点击“继续计时”恢复对弈。');
+    } else if (aiTurn()) {
+      message(`AI（${name(aiColor)}）正在思考…`);
     }
     renderClock();
+    opponent.sync(game, aiColor);
   }
   function renderClock() {
     const seconds = !game ? 60 : game.result ? 0 : game.remaining();
@@ -311,6 +334,10 @@
     }
   }
   $('setup-form').addEventListener('change', event => {
+    if (event.target.name === 'opponent') {
+      const local = event.target.value === 'local';
+      $('ai-options').hidden = local; $('ai-options').disabled = local; $('ai-note').hidden = local;
+    }
     if (event.target.name !== 'seconds') return;
     $('custom-minutes').disabled = !$('custom-mode').checked;
     validateMinutes();
@@ -322,6 +349,9 @@
     if (!$('setup-form').reportValidity()) return;
     const mode = new FormData($('setup-form')).get('seconds');
     const seconds = mode === 'custom' ? Math.round($('custom-minutes').valueAsNumber * 60) : Number(mode);
+    opponent.cancel();
+    humanColor = Number(new FormData($('setup-form')).get('human')) || BLUE;
+    aiColor = new FormData($('setup-form')).get('opponent') === 'ai' ? (humanColor === BLUE ? RED : BLUE) : null;
     game = new Game(seconds);
     resetCamera();
     ended = false; $('setup-dialog').close();
@@ -358,14 +388,25 @@
     $('assessment').focus();
   };
   $('pass').onclick = () => {
+    if (!game || aiTurn()) return;
     const color = game.turn;
     if (game.pass()) { resetCamera(); sound('button'); message(`${name(color)}停一手，轮到${name(game.turn)}。`); }
     render();
   };
-  $('undo').onclick = () => { if (game.undo()) { resetCamera(); sound('button'); message(`已撤销上一手，轮到${name(game.turn)}。`); } render(); };
+  $('undo').onclick = () => {
+    opponent.cancel();
+    if (game && (aiColor ? SixSideGoAI.undoRound(game, humanColor) : game.undo())) {
+      resetCamera(); sound('button'); message(aiColor ? '已撤回你上一手及 AI 应手，请重新落子。' : `已撤销上一手，轮到${name(game.turn)}。`);
+    }
+    render();
+  };
   $('resign').onclick = () => confirmAction(`${name(game.turn)}确认认输？`, '认输后本局结束。确认期间仍在计时。', () => { game.resign(); render(); });
   for (const [color, id] of [[BLUE, 'confirm-blue'], [RED, 'confirm-red']]) $(id).onclick = () => {
-    if (game?.confirmScore(color)) { resetCamera(); sound('button'); render(); }
+    if (aiColor && color === aiColor) return;
+    if (game?.confirmScore(color)) {
+      if (aiColor) game.confirmScore(aiColor);
+      resetCamera(); sound('button'); render();
+    }
   };
   $('resume-play').onclick = () => { if (game?.scoring) $('resume-dialog').showModal(); };
   for (const [color, id] of [[BLUE, 'resume-blue'], [RED, 'resume-red']]) $(id).onclick = () => {

@@ -288,6 +288,25 @@
     return { sides, ownership, contested, open, neutral: contested + open };
   }
 
+  // 对局与 AI 共用同一份落子规则；试算只返回副本，不触碰历史或计时。
+  function simulateMove(board, turn, id, ko = null) {
+    if (!BOARD.byId.has(id)) return { ok: false, reason: '请在棋盘交点落子' };
+    if (board[id]) return { ok: false, reason: '这里已有棋子' };
+    if (id === ko) return { ok: false, reason: '此处为劫点，请先在别处行棋' };
+    const next = board.slice(), removed = [];
+    next[id] = turn;
+    for (const n of BOARD.byId.get(id).neighbors) if (next[n] === other(turn)) {
+      const group = groupAt(next, n);
+      if (!group.liberties.size) for (const stone of group.stones) {
+        next[stone] = EMPTY; removed.push(stone);
+      }
+    }
+    const own = groupAt(next, id);
+    if (!own.liberties.size) return { ok: false, reason: '禁入点：落子后无气，且不能提子' };
+    return { ok: true, board: next, own, captured: removed.length,
+      ko: removed.length === 1 && own.stones.size === 1 && own.liberties.size === 1 ? removed[0] : null };
+  }
+
   class Game {
     constructor(seconds = 60, now = Date.now()) {
       if (!Number.isSafeInteger(seconds) || seconds < 1 || seconds > 180 * 60) {
@@ -364,27 +383,14 @@
       if (this.assessing) return { ok: false, reason: '请先关闭形势判断' };
       if (this.scoring) return { ok: false, reason: '请先确认死子，或选择继续对弈' };
       if (this.paused) return { ok: false, reason: '计时已暂停，请先继续计时' };
-      if (!BOARD.byId.has(id)) return { ok: false, reason: '请在棋盘交点落子' };
-      if (this.board[id]) return { ok: false, reason: '这里已有棋子' };
-      if (id === this.ko) return { ok: false, reason: '此处为劫点，请先在别处行棋' };
-      const before = this.snapshot(now), opponent = other(this.turn), removed = [];
-      this.board[id] = this.turn;
-      for (const next of BOARD.byId.get(id).neighbors) {
-        if (this.board[next] !== opponent) continue;
-        const group = groupAt(this.board, next);
-        if (!group.liberties.size) for (const stone of group.stones) {
-          this.board[stone] = EMPTY; removed.push(stone);
-        }
-      }
-      const own = groupAt(this.board, id);
-      if (!own.liberties.size) {
-        this.board = before.board;
-        return { ok: false, reason: '禁入点：落子后无气，且不能提子' };
-      }
+      const move = simulateMove(this.board, this.turn, id, this.ko);
+      if (!move.ok) return move;
+      const before = this.snapshot(now);
+      this.board = move.board;
       this.history.push(before);
-      this.captured[this.turn] += removed.length;
+      this.captured[this.turn] += move.captured;
       // 只有下一手能立即还原棋盘时才构成单劫，不能把普通单子提取误判为劫。
-      this.ko = removed.length === 1 && own.stones.size === 1 && own.liberties.size === 1 ? removed[0] : null;
+      this.ko = move.ko;
       this.passes = 0;
       this.moveNumber++;
       this.lastMove = id;
@@ -395,7 +401,7 @@
           BOARD.points.every(p => state.board[p.id] === this.board[p.id]))) {
         this.finish(EMPTY, 'repetition');
       }
-      return { ok: true, captured: removed.length };
+      return { ok: true, captured: move.captured };
     }
     pass(now = Date.now()) {
       if (this.tick(now) || this.reviewing || this.paused) return false;
@@ -472,7 +478,7 @@
       if (this.postgameReview) this.prepareDeadReview();
     }
   }
-  const api = { BOARD, Game, groupAt, score, analyzeDead, estimatePosition, EMPTY, BLUE, RED, other };
+  const api = { BOARD, Game, groupAt, simulateMove, score, analyzeDead, estimatePosition, EMPTY, BLUE, RED, other };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.SixSideGo = api;
 })(globalThis);

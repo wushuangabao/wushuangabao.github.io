@@ -13,11 +13,11 @@ for (const name of fs.readdirSync(output)) {
 for (const name of ['style.css', 'favicon.ico', 'assets']) {
   fs.cpSync(path.join(root, name), path.join(output, name), { recursive: true });
 }
-const scripts = ['game.js', 'board-view.js', 'app.js'];
+const scripts = ['game.js', 'ai.js', 'board-view.js', 'app.js'];
 const bundle = scripts.map(name => fs.readFileSync(path.join(root, 'src', name), 'utf8')).join('\n;\n');
 fs.writeFileSync(path.join(output, 'assets', 'game.js'), bundle);
 const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8')
-  .replace(/  <script defer src="src\/(?:game|board-view|app)\.js"><\/script>\r?\n/g, '')
+  .replace(/  <script defer src="src\/(?:game|ai|board-view|app)\.js"><\/script>\r?\n/g, '')
   .replace('</head>', '  <script defer src="assets/game.js"></script>\n</head>');
 fs.writeFileSync(path.join(output, 'index.html'), html);
 if (!fs.existsSync(path.join(output, 'index.html'))) {
